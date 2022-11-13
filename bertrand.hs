@@ -6,49 +6,44 @@ instance Show Operator where show o = name o
 data Operation = Operation Operator (Int,Int)
 instance Show Operation where show (Operation op (op1, op2)) = show op1 ++ name op ++ show op2 ++ "=" ++ show ((etor op) op1 op2)  
 
-data ProblemAndOps = ProblemAndOps { values :: [Int], target :: Int, operations :: [Operation] } deriving (Show)
-
-allOps :: [Operator]
-allOps = [addOp,mulOp,subOp,divOp] where 
+allOprtrs :: [Operator]
+allOprtrs = [addOp,mulOp,subOp,divOp] where 
     addOp=Operator{name="+", commute=True,  etor=(\x y -> x+y),       vtor=(\_ _ -> True)}
     mulOp=Operator{name="*", commute=True,  etor=(\x y -> x*y),       vtor=(\x y -> x /= 1 && y /= 1 && x /= 0 && y /= 0)}
     subOp=Operator{name="-", commute=False, etor=(\x y -> x-y),       vtor=(\x y -> x > y)}
     divOp=Operator{name="/", commute=False, etor=(\x y -> x `div` y), vtor=(\x y -> y /= 0 && y /=1 && (x `mod` y) == 0)}
 
 valuesDerivation :: [Int] -> (Int,Int) -> Operator -> Maybe([Int], Operation)
-valuesDerivation xs (idx1, idx2) op
-    | xs == []               = Nothing
-    | (commute op) && i > j  = Nothing
-    | (vtor op) i j == False = Nothing
-    | otherwise              = Just ([fst e | e <- zip xs [0..], snd e /= idx1 && snd e /= idx2] ++ [(etor op) i j], Operation op (i,j))
-    where i=(xs!!idx1) 
-          j=(xs!!idx2)
-
-valuesDerivations :: [Operator] -> [Int] -> (Int, Int) -> [([Int], Operation)]
-valuesDerivations ops xs indexes = catMaybes(map (\op -> valuesDerivation xs indexes op) ops)
+valuesDerivation values (idx1, idx2) op
+    | values == []               = Nothing
+    | (commute op) && i > j      = Nothing
+    | (vtor op) i j == False     = Nothing
+    | otherwise                  = Just ((etor op) i j:[val | (val, idx) <- zip values [0..], idx /= idx1 && idx /= idx2], Operation op (i,j))
+    where i=(values!!idx1) 
+          j=(values!!idx2)
 
 allValuesDerivations :: [Operator] -> [Int] -> [([Int], Operation)]
-allValuesDerivations ops xs = (indexPairs xs) >>= (\pair -> valuesDerivations ops xs pair)
-    where indexPairs :: [a] -> [(Int,Int)]
-          indexPairs xs = [(i,j) | i <- [0..length xs - 1], j <- [0..length xs - 1], i /= j]
-
-allProblemAndOpsDerivations :: [Operator] -> ProblemAndOps -> [ProblemAndOps]
-allProblemAndOpsDerivations ops pnops =
-        map (\derivation -> deriveProblemAndOp pnops derivation) (allValuesDerivations ops (values pnops)) 
+allValuesDerivations oprtrs vals = (indexPairs vals) >>= (\pair -> valuesDerivations oprtrs vals pair)
     where 
-        pnopOps = operations pnops
-        deriveProblemAndOp :: ProblemAndOps -> ([Int], Operation) -> ProblemAndOps
-        deriveProblemAndOp pnops (derivedValues, derivedOp) = ProblemAndOps{values=derivedValues, target=target pnops, operations=pnopOps ++ [derivedOp]}
+        indexPairs :: [a] -> [(Int,Int)]
+        indexPairs xs = [(i,j) | i <- [0..length vals - 1], j <- [0..length vals - 1], i /= j]
+        valuesDerivations :: [Operator] -> [Int] -> (Int, Int) -> [([Int], Operation)]
+        valuesDerivations oprtrs vals indexes = catMaybes (map (\op -> valuesDerivation vals indexes op) oprtrs)
 
-internalSolve ::[Operator] -> ProblemAndOps -> Maybe [Operation]
-internalSolve ops pnops
-    | elem (target pnops) (values pnops)      = Just(operations pnops)
-    | otherwise                               = case derivedSolutions of
-                                                    []        -> Nothing
-                                                    (x:xs)    -> x
-    where 
-        derivations = allProblemAndOpsDerivations ops pnops
-        derivedSolutions = filter isJust (map (\derivation -> internalSolve ops derivation) (derivations))
+allProblemAndOprtrsDerivations :: [Operator] -> [Int] -> [Operation] -> [([Int],[Operation])]
+allProblemAndOprtrsDerivations oprtrs vals oprtns =
+    map (\(derivedValues, derivedOp) -> (derivedValues, oprtns ++ [derivedOp])) (allValuesDerivations oprtrs vals) 
+
+internalSolve ::[Operator] -> [Int] -> Int -> [Operation] -> Maybe [Operation]
+internalSolve oprtrs vals target oprtns
+    | elem target vals = Just oprtns
+    | otherwise        = case filter isJust derivedSolutions of
+                                []    -> Nothing
+                                (x:_) -> x
+    where derivations = allProblemAndOprtrsDerivations oprtrs vals oprtns
+          derivedSolutions = map (\(derivedValues, derivedOprtns) -> internalSolve oprtrs derivedValues target derivedOprtns) derivations
 
 solve :: [Operator] -> [Int] -> Int -> Maybe [Operation]
-solve ops values target = internalSolve ops ProblemAndOps{values=values, target=target, operations=[]}
+solve oprtrs vals target = internalSolve oprtrs vals target []
+
+
